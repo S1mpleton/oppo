@@ -1,0 +1,8 @@
+ADD smartphone Samsung 2023 Android 8
+ADD laptop Lenovo 2021 Ryzen5 16
+ADD tablet Apple 2022 10.9 7600
+PRINT
+REM year < 2022
+PRINT
+REM manufacturer = Samsung
+PRINT
