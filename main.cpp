@@ -1,88 +1,84 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <vector>
 #include <string>
+#include <vector>
 #include <algorithm>
-
 using namespace std;
 
-
-class Device {
-public:
+struct Device {
     string type;
     string manufacturer;
     int year;
     string parameter1;
     int parameter2;
-
-    void print() const {
-        cout << type << " | " << manufacturer << " | " << year << " | ";
-        if (type == "smartphone")
-            cout << "OS: " << parameter1 << ", memory: " << parameter2 << " GB";
-        else if (type == "laptop")
-            cout << "CPU: " << parameter1 << ", RAM: " << parameter2 << " GB";
-        else
-            cout << "screen: " << parameter1 << " inches, battery: " << parameter2 << " mAh";
-        cout << '\n';
-    }
 };
 
-class DeviceStorage {
-    vector<Device> devices;
+// Each function returns a new container. The original container is unchanged.
+vector<Device> addDevice(const vector<Device>& devices, const Device& device) {
+    vector<Device> result = devices;
+    result.push_back(device);
+    return result;
+}
 
-public:
-    void add(const Device& device) {
-        devices.push_back(device);
-    }
+bool matches(const Device& d, const string& field, const string& op,
+             const string& value) {
+    if (field == "type") return d.type == value;
+    if (field == "manufacturer") return d.manufacturer == value;
+    int year = stoi(value);
+    if (op == "=") return d.year == year;
+    if (op == "<") return d.year < year;
+    return d.year > year;
+}
 
-    void remove(const string& field, const string& op, const string& value) {
-        if (op != "=" && op != ">" && op != "<") {
-            cout << "Invalid operator\n";
-            return;
-        }
-        if (field != "year" && ((field != "type" && field != "manufacturer") || op != "=")) {
-            cout << "Invalid removal condition\n";
-            return;
-        }
-        int yearValue = 0;
-        if (field == "year") {
-            istringstream input(value);
-            if (!(input >> yearValue) || !(input >> ws).eof()) {
-                cout << "Invalid year\n";
-                return;
-            }
-        }
-        auto matches = [&](const Device& device) {
-            if (field == "type") return device.type == value;
-            if (field == "manufacturer") return device.manufacturer == value;
-            if (op == "=") return device.year == yearValue;
-            if (op == "<") return device.year < yearValue;
-            return device.year > yearValue;
-        };
-        size_t before = devices.size();
-        devices.erase(remove_if(devices.begin(), devices.end(), matches), devices.end());
-        cout << "Removed: " << before - devices.size() << '\n';
-    }
+vector<Device> removeDevices(const vector<Device>& devices,
+                             const string& field, const string& op,
+                             const string& value) {
+    vector<Device> result;
+    copy_if(devices.begin(), devices.end(), back_inserter(result),
+            [&](const Device& d) { return !matches(d, field, op, value); });
+    return result;
+}
 
-    void print() const {
-        if (devices.empty()) {
-            cout << "Storage is empty\n";
-            return;
-        }
-        for (const Device& device : devices) device.print();
+string deviceToString(const Device& d) {
+    string result = d.type + " | " + d.manufacturer + " | " +
+                    to_string(d.year) + " | ";
+    if (d.type == "smartphone")
+        return result + "OS: " + d.parameter1 + ", memory: " + to_string(d.parameter2) + " GB";
+    if (d.type == "laptop")
+        return result + "CPU: " + d.parameter1 + ", RAM: " + to_string(d.parameter2) + " GB";
+    return result + "screen: " + d.parameter1 + " inches, battery: " +
+           to_string(d.parameter2) + " mAh";
+}
+
+bool validCondition(const string& field, const string& op, const string& value) {
+    if (field == "type" || field == "manufacturer")
+        return op == "=";
+    if (field != "year" || (op != "=" && op != "<" && op != ">"))
+        return false;
+    try {
+        size_t used = 0;
+        stoi(value, &used);
+        return used == value.size();
+    } catch (...) {
+        return false;
     }
-};
+}
+
+bool validDevice(const Device& d) {
+    return (d.type == "smartphone" || d.type == "laptop" || d.type == "tablet") &&
+           d.year >= 1900 && d.parameter2 > 0;
+}
 
 int main(int argc, char* argv[]) {
-    string filename = argc > 1 ? argv[1] : "commands.txt";
+    const string filename = argc > 1 ? argv[1] : "commands.txt";
     ifstream file(filename);
     if (!file) {
         cout << "Cannot open file: " << filename << '\n';
         return 1;
     }
 
-    DeviceStorage storage;
+    vector<Device> devices;
     string line;
     while (getline(file, line)) {
         istringstream input(line);
@@ -90,24 +86,30 @@ int main(int argc, char* argv[]) {
         if (!(input >> command) || command[0] == '#') continue;
 
         if (command == "ADD") {
-            Device device;
-            if (!(input >> device.type >> device.manufacturer >> device.year
-                        >> device.parameter1 >> device.parameter2) ||
-                (device.type != "smartphone" && device.type != "laptop" && device.type != "tablet") ||
-                device.year < 1900 || device.parameter2 <= 0) {
+            Device d;
+            string extra;
+            if (!(input >> d.type >> d.manufacturer >> d.year >> d.parameter1 >> d.parameter2) ||
+                (input >> extra) || !validDevice(d)) {
                 cout << "Invalid ADD: " << line << '\n';
                 continue;
             }
-            storage.add(device);
+            devices = addDevice(devices, d);
         } else if (command == "REM") {
-            string field, op, value;
-            if (input >> field >> op >> value)
-                storage.remove(field, op, value);
-            else
+            string field, op, value, extra;
+            if (!(input >> field >> op >> value) || (input >> extra) ||
+                !validCondition(field, op, value)) {
                 cout << "Invalid REM: " << line << '\n';
+                continue;
+            }
+            const size_t before = devices.size();
+            devices = removeDevices(devices, field, op, value);
+            cout << "Removed: " << before - devices.size() << '\n';
         } else if (command == "PRINT") {
             cout << "--- Devices ---\n";
-            storage.print();
+            if (devices.empty()) cout << "Storage is empty\n";
+            else for_each(devices.begin(), devices.end(), [](const Device& d) {
+                cout << deviceToString(d) << '\n';
+            });
         } else {
             cout << "Unknown command: " << command << '\n';
         }
